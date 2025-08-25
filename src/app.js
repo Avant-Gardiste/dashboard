@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Download, Trash2, Users, FileText, LogOut, RefreshCw, X, Trash, UserPlus, Search, Settings, Eye, EyeOff, Key } from 'lucide-react';
+import { Plus, Download, Trash2, Users, FileText, LogOut, RefreshCw, X, Trash, UserPlus, Search, Settings, Eye, EyeOff, Key, Scissors, User, Euro, CreditCard, Gift, Clock, BarChart3 } from 'lucide-react';
 
 // Composant séparé pour la gestion des comptes
 const AccountManager = ({ onBack }) => {
@@ -465,10 +465,11 @@ const SalonApp = () => {
   const [nouveauCoiffeur, setNouveauCoiffeur] = useState('');
   const [montrerAjoutCoiffeur, setMontrerAjoutCoiffeur] = useState(false);
   
-  // État pour la prestation en cours
+  // État pour la prestation en cours - AJOUT DU POURBOIRE
   const [prestationActuelle, setPrestationActuelle] = useState({
       coiffeur: '',
       prix: '',
+      pourboire: '0', // NOUVEAU: valeur par défaut à 0
       paiement: '',
       prestation: ''
     });
@@ -560,24 +561,33 @@ const SalonApp = () => {
     localStorage.removeItem("currentUser");
   };
 
-  // Calcul du total journalier
+  // Calcul du total journalier (SANS pourboires pour le dashboard)
   const totalJournee = prestations.reduce((total, p) => total + parseFloat(p.prix || 0), 0);
   const totalLiquide = prestations.filter(p => p.paiement === 'liquide').reduce((total, p) => total + parseFloat(p.prix || 0), 0);
   const totalCarte = prestations.filter(p => p.paiement === 'carte').reduce((total, p) => total + parseFloat(p.prix || 0), 0);
+
+  // NOUVEAU: Calculs pour les pourboires (pour les rapports)
+  const totalPourboires = prestations.reduce((total, p) => total + parseFloat(p.pourboire || 0), 0);
+  const totalAvecPourboires = totalJournee + totalPourboires;
 
   // Statistiques par coiffeur
   const statsCoiffeurs = coiffeurs.map(coiffeur => {
     const prestationsCoiffeur = prestations.filter(p => p.coiffeur === coiffeur);
     const total = prestationsCoiffeur.reduce((sum, p) => sum + parseFloat(p.prix || 0), 0);
+    const pourboires = prestationsCoiffeur.reduce((sum, p) => sum + parseFloat(p.pourboire || 0), 0);
     return {
       nom: coiffeur,
       nbPrestations: prestationsCoiffeur.length,
-      total: total
+      total: total,
+      pourboires: pourboires,
+      totalAvecPourboires: total + pourboires
     };
   }).filter(stat => stat.nbPrestations > 0);
 
   // Prix prédéfinis pour faciliter la saisie
   const prixPredéfinis = [10, 15, 20, 25, 35, 50, 70, 90];
+  // NOUVEAU: Pourboires prédéfinis
+  const pourboiresPredéfinis = [0, 2, 5, 10, 15, 20];
 
   // Fonction pour filtrer les prestations selon la recherche
   const filtrerPrestations = (recherche) => {
@@ -606,7 +616,7 @@ const SalonApp = () => {
         if (window.confirm('Voulez-vous vraiment actualiser les données ? Seules les prestations seront effacées.\n\n⚠️ Les coiffeurs seront conservés.')) {
           // SEULEMENT actualiser les prestations, PAS les coiffeurs
           setPrestations([]);
-          setPrestationActuelle({ coiffeur: '', prix: '', paiement: '' });
+          setPrestationActuelle({ coiffeur: '', prix: '', pourboire: '0', paiement: '', prestation: '' });
           
           alert('✅ Prestations actualisées et fichier téléchargé !\n\n👥 Les coiffeurs ont été conservés.');
         }
@@ -614,7 +624,7 @@ const SalonApp = () => {
     } else {
       if (window.confirm('Aucune prestation à sauvegarder. Actualiser quand même ?')) {
         setPrestations([]);
-        setPrestationActuelle({ coiffeur: '', prix: '', paiement: '' });
+        setPrestationActuelle({ coiffeur: '', prix: '', pourboire: '0', paiement: '', prestation: '' });
         
         alert('✅ Prestations actualisées !\n\n👥 Les coiffeurs ont été conservés.');
       }
@@ -658,7 +668,7 @@ const SalonApp = () => {
       };
       
       setPrestations([...prestations, prestation]);
-      setPrestationActuelle({ coiffeur: '', prix: '', paiement: '' });
+      setPrestationActuelle({ coiffeur: '', prix: '', pourboire: '0', paiement: '', prestation: '' });
     }
   };
 
@@ -677,9 +687,9 @@ const SalonApp = () => {
     setPrestations(prestations.filter((_, i) => i !== index));
   };
 
-  // Fonction pour générer le contenu CSV (compatible Excel)
+  // Fonction pour générer le contenu CSV (compatible Excel) - MODIFIÉ POUR POURBOIRES
   const genererCSV = () => {
-    const headers = ['N°', 'Heure', 'Coiffeur', 'Prestation' , 'Prix (€)', 'Mode de paiement'];
+    const headers = ['N°', 'Heure', 'Coiffeur', 'Prestation' , 'Prix (€)', 'Pourboire (€)', 'Total (€)', 'Mode de paiement'];
     
     let csvContent = '\uFEFF'; // BOM pour UTF-8
     csvContent += `${currentUser?.salonName || 'SALON DE COIFFURE'} - RAPPORT JOURNALIER\n`;
@@ -688,32 +698,40 @@ const SalonApp = () => {
     csvContent += headers.join(';') + '\n';
     
     prestations.forEach((prestation, index) => {
+      const prix = parseFloat(prestation.prix);
+      const pourboire = parseFloat(prestation.pourboire || 0);
+      const total = prix + pourboire;
+      
       const row = [
         index + 1,
         prestation.heure,
         prestation.coiffeur,
         prestation.prestation || 'Non spécifiée',
-        parseFloat(prestation.prix).toFixed(2),
+        prix.toFixed(2),
+        pourboire.toFixed(2),
+        total.toFixed(2),
         prestation.paiement === 'liquide' ? 'Liquide' : 'Carte'
       ];
       csvContent += row.join(';') + '\n';
     });
     
-    // Ajouter les totaux
+    // Ajouter les totaux - MODIFIÉ POUR POURBOIRES
     csvContent += '\n';
     csvContent += 'RÉSUMÉ DE LA JOURNÉE\n';
     csvContent += `Total prestations;${prestations.length}\n`;
-    csvContent += `Chiffre d'affaires;${totalJournee.toFixed(2)}€\n`;
+    csvContent += `Chiffre d'affaires (prestations);${totalJournee.toFixed(2)}€\n`;
+    csvContent += `Total pourboires;${totalPourboires.toFixed(2)}€\n`;
+    csvContent += `TOTAL GÉNÉRAL;${totalAvecPourboires.toFixed(2)}€\n`;
     csvContent += `Paiement Liquide;${totalLiquide.toFixed(2)}€\n`;
     csvContent += `Paiement Carte;${totalCarte.toFixed(2)}€\n`;
     
-    // Détail par coiffeur
+    // Détail par coiffeur - MODIFIÉ POUR POURBOIRES
     if (statsCoiffeurs.length > 0) {
       csvContent += '\n';
       csvContent += 'DÉTAIL PAR COIFFEUR\n';
-      csvContent += 'Nom;Prestations;Total (€)\n';
+      csvContent += 'Nom;Prestations;Prestations (€);Pourboires (€);Total (€)\n';
       statsCoiffeurs.forEach(stat => {
-        csvContent += `${stat.nom};${stat.nbPrestations};${stat.total.toFixed(2)}\n`;
+        csvContent += `${stat.nom};${stat.nbPrestations};${stat.total.toFixed(2)};${stat.pourboires.toFixed(2)};${stat.totalAvecPourboires.toFixed(2)}\n`;
       });
     }
     
@@ -739,7 +757,7 @@ const SalonApp = () => {
           setCoiffeurs([...coiffeurs]);
           setPrestations([...prestations]);
           
-          alert(`✅ Fichier téléchargé avec succès!\n\n📁 ${prestations.length} prestations exportées\n💰 Total: ${totalJournee.toFixed(2)}€\n\n📊 Les données ont été actualisées`);
+          alert(`✅ Fichier téléchargé avec succès!\n\n📁 ${prestations.length} prestations exportées\n💰 Total: ${totalJournee.toFixed(2)}€\n🎁 Pourboires: ${totalPourboires.toFixed(2)}€\n💎 Total général: ${totalAvecPourboires.toFixed(2)}€\n\n📊 Les données ont été actualisées`);
         }, 100);
       }
     } catch (error) {
@@ -751,7 +769,8 @@ const SalonApp = () => {
   const RapportExcel = () => (
     <div className="bg-white border border-gray-300 rounded-lg overflow-hidden shadow-lg">
       <div className="bg-green-800 text-white p-4 text-center font-bold text-lg">
-        📊 {currentUser?.salonName || 'SALON DE COIFFURE'} - RAPPORT JOURNALIER
+        <FileText className="inline w-6 h-6 mr-2" />
+        {currentUser?.salonName || 'SALON DE COIFFURE'} - RAPPORT JOURNALIER
       </div>
       <div className="bg-green-100 p-3 text-center font-bold text-green-800">
         📁 Fichier: {currentUser?.salonName || 'Salon'}_{new Date().toISOString().split('T')[0]}.csv
@@ -764,66 +783,101 @@ const SalonApp = () => {
               <thead>
                 <tr className="bg-blue-600 text-white">
                   <th className="p-3 text-left">N°</th>
-                  <th className="p-3 text-left">Heure</th>
-                  <th className="p-3 text-left">Coiffeur</th>
-                  <th className="p-3 text-left">Prestation</th>
-                  <th className="p-3 text-left">Prix (€)</th>
-                  <th className="p-3 text-left">Mode de paiement</th>
+                  <th className="p-3 text-left"><Clock className="inline w-4 h-4 mr-1" />Heure</th>
+                  <th className="p-3 text-left"><User className="inline w-4 h-4 mr-1" />Coiffeur</th>
+                  <th className="p-3 text-left"><Scissors className="inline w-4 h-4 mr-1" />Prestation</th>
+                  <th className="p-3 text-left"><Euro className="inline w-4 h-4 mr-1" />Prix (€)</th>
+                  <th className="p-3 text-left"><Gift className="inline w-4 h-4 mr-1" />Pourboire (€)</th>
+                  <th className="p-3 text-left"><BarChart3 className="inline w-4 h-4 mr-1" />Total (€)</th>
+                  <th className="p-3 text-left"><CreditCard className="inline w-4 h-4 mr-1" />Paiement</th>
                 </tr>
               </thead>
               <tbody>
-                {prestations.map((prestation, index) => (
-                  <tr key={index} className={index % 2 === 1 ? 'bg-gray-50' : 'bg-white'}>
-                    <td className="p-3">{index + 1}</td>
-                    <td className="p-3">{prestation.heure}</td>
-                    <td className="p-3">{prestation.coiffeur}</td>
-                    <td className="p-3">{prestation.prestation}</td>
-                    <td className="p-3">{parseFloat(prestation.prix).toFixed(2)}</td>
-                    <td className="p-3">
-                      <span className={`font-bold ${
-                        prestation.paiement === 'liquide' 
-                          ? 'text-orange-600' 
-                          : 'text-blue-600'
-                      }`}>
-                        {prestation.paiement === 'liquide' ? 'Liquide' : 'Carte'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {prestations.map((prestation, index) => {
+                  const prix = parseFloat(prestation.prix);
+                  const pourboire = parseFloat(prestation.pourboire || 0);
+                  const total = prix + pourboire;
+                  
+                  return (
+                    <tr key={index} className={index % 2 === 1 ? 'bg-gray-50' : 'bg-white'}>
+                      <td className="p-3">{index + 1}</td>
+                      <td className="p-3">{prestation.heure}</td>
+                      <td className="p-3">{prestation.coiffeur}</td>
+                      <td className="p-3">{prestation.prestation}</td>
+                      <td className="p-3">{prix.toFixed(2)}</td>
+                      <td className="p-3">
+                        {pourboire > 0 ? (
+                          <span className="text-green-600 font-medium">+{pourboire.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-gray-400">0.00</span>
+                        )}
+                      </td>
+                      <td className="p-3 font-bold text-blue-600">{total.toFixed(2)}</td>
+                      <td className="p-3">
+                        <span className={`font-bold ${
+                          prestation.paiement === 'liquide' 
+                            ? 'text-orange-600' 
+                            : 'text-blue-600'
+                        }`}>
+                          {prestation.paiement === 'liquide' ? 'Liquide' : 'Carte'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           
           <div className="bg-gray-100 p-4">
-            <h3 className="font-bold text-lg mb-3">📈 RÉSUMÉ DE LA JOURNÉE</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <h3 className="font-bold text-lg mb-3">
+              <BarChart3 className="inline w-5 h-5 mr-2" />
+              RÉSUMÉ DE LA JOURNÉE
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-4">
               <div className="bg-white p-3 rounded border">
-                <div className="font-bold">🔢 Total prestations</div>
+                <div className="font-bold text-sm">🔢 Total prestations</div>
                 <div className="text-xl text-blue-600">{prestations.length}</div>
               </div>
               <div className="bg-white p-3 rounded border">
-                <div className="font-bold">💰 Chiffre d'affaires</div>
+                <div className="font-bold text-sm">💰 Prestations</div>
                 <div className="text-xl text-green-600">{totalJournee.toFixed(2)} €</div>
               </div>
               <div className="bg-white p-3 rounded border">
-                <div className="font-bold">💵 Liquide</div>
-                <div className="text-xl text-orange-600">{totalLiquide.toFixed(2)} €</div>
+                <div className="font-bold text-sm">🎁 Pourboires</div>
+                <div className="text-xl text-purple-600">{totalPourboires.toFixed(2)} €</div>
               </div>
               <div className="bg-white p-3 rounded border">
-                <div className="font-bold">💳 Carte</div>
-                <div className="text-xl text-blue-600">{totalCarte.toFixed(2)} €</div>
+                <div className="font-bold text-sm">💎 TOTAL GÉNÉRAL</div>
+                <div className="text-xl text-indigo-600 font-bold">{totalAvecPourboires.toFixed(2)} €</div>
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <div className="grid grid-cols-1 gap-1">
+                  <div className="text-xs">
+                    <span className="font-bold text-orange-600">💵 {totalLiquide.toFixed(2)}€</span>
+                  </div>
+                  <div className="text-xs">
+                    <span className="font-bold text-blue-600">💳 {totalCarte.toFixed(2)}€</span>
+                  </div>
+                </div>
               </div>
             </div>
             
             {statsCoiffeurs.length > 0 && (
               <>
-                <h4 className="font-bold mb-2">👥 DÉTAIL PAR COIFFEUR:</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <h4 className="font-bold mb-2">
+                  <Users className="inline w-4 h-4 mr-1" />
+                  DÉTAIL PAR COIFFEUR:
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                   {statsCoiffeurs.map((stat, index) => (
                     <div key={index} className="bg-white p-3 rounded border">
                       <div className="font-bold">{stat.nom}</div>
-                      <div className="text-sm text-gray-600">
-                        {stat.nbPrestations} prestations - {stat.total.toFixed(2)} €
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <div>🔢 {stat.nbPrestations} prestations</div>
+                        <div>💰 Prestations: {stat.total.toFixed(2)} €</div>
+                        <div>🎁 Pourboires: {stat.pourboires.toFixed(2)} €</div>
+                        <div className="font-bold text-indigo-600">💎 Total: {stat.totalAvecPourboires.toFixed(2)} €</div>
                       </div>
                     </div>
                   ))}
@@ -875,7 +929,8 @@ const SalonApp = () => {
       <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-blue-600 mb-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-blue-600 mb-2 flex items-center">
+              <Scissors className="w-6 h-6 mr-2" />
               {currentUser?.salonName || 'Salon de Coiffure'} - Suivi Journalier
             </h1>
             <p className="text-gray-600">
@@ -905,7 +960,7 @@ const SalonApp = () => {
           </div>
         </div>
         
-        {/* Totaux du jour */}
+        {/* Totaux du jour - GARDE LES MÊMES (sans pourboires) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-green-100 p-4 rounded-lg text-center">
             <div className="text-lg sm:text-2xl font-bold text-green-800">{totalJournee.toFixed(2)}€</div>
@@ -931,7 +986,10 @@ const SalonApp = () => {
         
         {/* Gestion des coiffeurs */}
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Coiffeurs</label>
+          <label className="block text-sm font-medium mb-2 flex items-center">
+            <Users className="w-4 h-4 mr-1" />
+            Coiffeurs
+          </label>
           
           {/* Liste des coiffeurs existants */}
           {coiffeurs.length > 0 ? (
@@ -976,7 +1034,10 @@ const SalonApp = () => {
           ) : (
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-blue-800">Nouveau coiffeur</h4>
+                <h4 className="font-medium text-blue-800 flex items-center">
+                  <UserPlus className="w-4 h-4 mr-1" />
+                  Nouveau coiffeur
+                </h4>
                 <button
                   onClick={annulerAjoutCoiffeur}
                   className="text-gray-500 hover:text-gray-700"
@@ -1015,7 +1076,10 @@ const SalonApp = () => {
 
         {/* Section Prestation */}
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Type de prestation</label>
+          <label className="block text-sm font-medium mb-2 flex items-center">
+            <Scissors className="w-4 h-4 mr-1" />
+            Type de prestation
+          </label>
           
           {/* Onglets catégories */}
           <div className="flex mb-3 bg-gray-100 p-1 rounded-lg">
@@ -1137,7 +1201,10 @@ const SalonApp = () => {
 
         {/* Prix */}
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Prix</label>
+          <label className="block text-sm font-medium mb-2 flex items-center">
+            <Euro className="w-4 h-4 mr-1" />
+            Prix
+          </label>
           <div className="flex flex-wrap gap-2 mb-2">
             {prixPredéfinis.map((prix) => (
               <button
@@ -1163,9 +1230,42 @@ const SalonApp = () => {
           />
         </div>
 
+        {/* NOUVEAU: Section Pourboire */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-2 flex items-center">
+            <Gift className="w-4 h-4 mr-1" />
+            Pourboire <span className="text-xs text-gray-500 ml-1">(optionnel)</span>
+          </label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {pourboiresPredéfinis.map((pourboire) => (
+              <button
+                key={pourboire}
+                onClick={() => setPrestationActuelle({...prestationActuelle, pourboire: pourboire.toString()})}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  prestationActuelle.pourboire === pourboire.toString()
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {pourboire === 0 ? 'Aucun' : `${pourboire}€`}
+              </button>
+            ))}
+          </div>
+          <input
+            type="number"
+            value={prestationActuelle.pourboire}
+            onChange={(e) => setPrestationActuelle({...prestationActuelle, pourboire: e.target.value})}
+            placeholder="Ou saisir un montant"
+            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+          />
+        </div>
+
         {/* Mode de paiement */}
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Mode de paiement</label>
+          <label className="block text-sm font-medium mb-2 flex items-center">
+            <CreditCard className="w-4 h-4 mr-1" />
+            Mode de paiement
+          </label>
           <div className="flex gap-2">
             <button
               onClick={() => setPrestationActuelle({...prestationActuelle, paiement: 'liquide'})}
@@ -1204,7 +1304,10 @@ const SalonApp = () => {
       {prestations.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Prestations du jour ({prestations.length})</h2>
+            <h2 className="text-xl font-semibold flex items-center">
+              <FileText className="w-5 h-5 mr-2" />
+              Prestations du jour ({prestations.length})
+            </h2>
             <div className="flex gap-2">
               <button
                 onClick={telechargerExcel}
@@ -1217,30 +1320,68 @@ const SalonApp = () => {
           </div>
           
           <div className="space-y-2">
-            {prestations.map((prestation, index) => (
-              <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                <div className="flex-1">
-                  <span className="font-medium">{prestation.coiffeur}</span>
-                  <span className="mx-2">•</span>
-                  <span className="font-bold text-green-600">{prestation.prix}€</span>
-                  <span className="mx-2">•</span>
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    prestation.paiement === 'liquide' 
-                      ? 'bg-orange-200 text-orange-800'
-                      : 'bg-indigo-200 text-indigo-800'
-                  }`}>
-                    {prestation.paiement}
-                  </span>
-                  <span className="mx-2 text-gray-500">{prestation.heure}</span>
+            {prestations.map((prestation, index) => {
+              const prix = parseFloat(prestation.prix);
+              const pourboire = parseFloat(prestation.pourboire || 0);
+              const total = prix + pourboire;
+              
+              return (
+                <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center flex-wrap gap-2">
+                      <span className="font-medium flex items-center">
+                        <User className="w-4 h-4 mr-1" />
+                        {prestation.coiffeur}
+                      </span>
+                      <span className="mx-1">•</span>
+                      <span className="font-bold text-green-600 flex items-center">
+                        <Euro className="w-4 h-4 mr-1" />
+                        {prix.toFixed(2)}€
+                      </span>
+                      {pourboire > 0 && (
+                        <>
+                          <span className="mx-1">+</span>
+                          <span className="font-bold text-purple-600 flex items-center">
+                            <Gift className="w-4 h-4 mr-1" />
+                            {pourboire.toFixed(2)}€
+                          </span>
+                          <span className="mx-1">=</span>
+                          <span className="font-bold text-indigo-600 flex items-center">
+                            <BarChart3 className="w-4 h-4 mr-1" />
+                            {total.toFixed(2)}€
+                          </span>
+                        </>
+                      )}
+                      <span className="mx-2">•</span>
+                      <span className={`px-2 py-1 rounded text-xs flex items-center ${
+                        prestation.paiement === 'liquide' 
+                          ? 'bg-orange-200 text-orange-800'
+                          : 'bg-indigo-200 text-indigo-800'
+                      }`}>
+                        <CreditCard className="w-3 h-3 mr-1" />
+                        {prestation.paiement}
+                      </span>
+                      <span className="mx-2 text-gray-500 flex items-center">
+                        <Clock className="w-3 h-3 mr-1" />
+                        {prestation.heure}
+                      </span>
+                    </div>
+                    {prestation.prestation && (
+                      <div className="text-sm text-gray-600 mt-1 flex items-center">
+                        <Scissors className="w-3 h-3 mr-1" />
+                        {prestation.prestation}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => supprimerPrestation(index)}
+                    className="text-red-600 hover:text-red-800 transition-colors ml-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => supprimerPrestation(index)}
-                  className="text-red-600 hover:text-red-800 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
